@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>シフト管理アプリ（保存機能付き）</title>
+<style>
+  body { font-family: sans-serif; text-align: center; }
+
+  table { border-collapse: collapse; margin: 20px auto; }
+
+  td, th {
+    border: 1px solid #ccc;
+    width: 85px;
+    height: 85px;
+    vertical-align: top;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+
+  td:hover { transform: scale(1.05); }
+
+  th { background: #eee; }
+
+  .off { background: #b6fcb6; font-size: 20px; font-weight: bold; }
+  .day { background: #aee3ff; font-weight: bold; }
+  .night { background: #d2b6ff; font-weight: bold; }
+  .matsuya { background: #ffb3b3; font-weight: bold; }
+  .double {
+    background: linear-gradient(135deg, #d2b6ff 50%, #ffb3b3 50%);
+    font-weight: bold;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<h2>シフト管理カレンダー（保存対応）</h2>
+
+年: <input type="number" id="year" value="2026">
+月: <input type="number" id="month" value="4"><br><br>
+
+<button onclick="generate()">作成</button>
+<button onclick="saveData()">保存</button>
+<button onclick="loadData()">読み込み</button>
+
+<div id="calendar"></div>
+<div id="summary"></div>
+
+<script>
+let shifts = [];
+let lastDate;
+
+const patterns = ["休", "昼", "夜", "松", "夜松"];
+
+function getKey() {
+  return `shift_${year.value}_${month.value}`;
+}
+
+// 自動生成
+function generate() {
+  const y = +year.value;
+  const m = +month.value - 1;
+
+  lastDate = new Date(y, m + 1, 0).getDate();
+  shifts = Array(lastDate).fill("");
+
+  for (let d = 1; d <= lastDate; d++) {
+    let dow = new Date(y, m, d).getDay();
+
+    if (dow === 0) shifts[d-1] = "休";
+    else if (dow === 1 || dow === 6) shifts[d-1] = "夜松";
+    else if (dow === 2 || dow === 4) shifts[d-1] = "昼";
+    else shifts[d-1] = "夜";
+  }
+
+  render(y, m);
+  saveData(); // 自動保存
+}
+
+// 描画
+function render(y, m) {
+  let html = "<table><tr>";
+  const days = ["日","月","火","水","木","金","土"];
+  days.forEach(d => html += "<th>"+d+"</th>");
+  html += "</tr><tr>";
+
+  let firstDay = new Date(y, m, 1).getDay();
+  let count = 0;
+
+  for (let i = 0; i < firstDay; i++) {
+    html += "<td></td>";
+    count++;
+  }
+
+  for (let d = 1; d <= lastDate; d++) {
+    html += `<td onclick="change(${d-1})">${d}<br>${display(shifts[d-1])}</td>`;
+    count++;
+    if (count % 7 === 0) html += "</tr><tr>";
+  }
+
+  html += "</tr></table>";
+  calendar.innerHTML = html;
+
+  updateSummary();
+}
+
+// 表示
+function display(s) {
+  if (s === "休") return `<div class="off">休😎</div>`;
+  if (s === "昼") return `<div class="day">昼</div>`;
+  if (s === "夜") return `<div class="night">夜</div>`;
+  if (s === "松") return `<div class="matsuya">松</div>`;
+  if (s === "夜松") return `<div class="double">夜<br>松</div>`;
+}
+
+// タップ変更
+function change(i) {
+  let idx = patterns.indexOf(shifts[i]);
+  shifts[i] = patterns[(idx + 1) % patterns.length];
+  render(+year.value, +month.value - 1);
+  saveData(); // 自動保存
+}
+
+// 保存
+function saveData() {
+  localStorage.setItem(getKey(), JSON.stringify(shifts));
+}
+
+// 読み込み
+function loadData() {
+  const data = localStorage.getItem(getKey());
+  if (data) {
+    shifts = JSON.parse(data);
+    lastDate = shifts.length;
+    render(+year.value, +month.value - 1);
+  } else {
+    alert("保存データなし");
+  }
+}
+
+// 合計
+function updateSummary() {
+  let count = {昼:0, 夜:0, 松:0, 休:0};
+
+  shifts.forEach(s => {
+    if (s === "夜松") {
+      count["夜"]++;
+      count["松"]++;
+    } else {
+      count[s]++;
+    }
+  });
+
+  summary.innerHTML =
+    `昼: ${count["昼"]}回 / 夜: ${count["夜"]}回 / 松屋: ${count["松"]}回 / 休み: ${count["休"]}日`;
+}
+</script>
+
+</body>
+</html>
