@@ -2,42 +2,39 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>シフト管理アプリ</title>
+
+<!-- iPhoneフルスクリーン化 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+
+<title>シフト管理</title>
 
 <style>
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont;
+  font-family: -apple-system;
   background: #f5f5f5;
 }
 
 /* ヘッダー */
 .header {
-  background: #111;
-  color: white;
-  padding: 15px;
+  padding: 12px;
   font-size: 18px;
   font-weight: bold;
+  text-align: center;
 }
 
-/* 入力エリア */
+/* 入力 */
 .controls {
-  padding: 10px;
-  background: white;
   display: flex;
   gap: 5px;
+  padding: 5px;
 }
 
 .controls input {
   flex: 1;
   padding: 8px;
   font-size: 16px;
-}
-
-.controls button {
-  padding: 8px;
-  font-size: 14px;
 }
 
 /* カレンダー */
@@ -47,22 +44,17 @@ table {
   background: white;
 }
 
-th {
-  background: #eee;
+td, th {
+  border: 1px solid #ddd;
+  text-align: center;
   font-size: 12px;
 }
 
 td {
-  width: 14.2%;
-  height: 70px;
-  text-align: center;
-  vertical-align: top;
-  border: 1px solid #ddd;
-  font-size: 12px;
-  padding: 2px;
+  height: 65px;
 }
 
-/* シフト色 */
+/* 色 */
 .off { background: #b6fcb6; font-weight: bold; }
 .day { background: #aee3ff; }
 .night { background: #d2b6ff; }
@@ -70,14 +62,27 @@ td {
 
 .double {
   background: linear-gradient(135deg, #d2b6ff 50%, #ffb3b3 50%);
-  font-size: 10px;
 }
 
-/* 合計 */
-.summary {
-  padding: 10px;
+/* 下メニュー */
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
   background: white;
-  font-size: 14px;
+  display: flex;
+  justify-content: space-around;
+  padding: 10px 0;
+  border-top: 1px solid #ccc;
+}
+
+.bottom-bar button {
+  font-size: 16px;
+}
+
+/* セーフエリア */
+body {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 </style>
 </head>
@@ -89,17 +94,23 @@ td {
 <div class="controls">
   <input type="number" id="year" value="2026">
   <input type="number" id="month" value="4">
-  <button onclick="generate()">作成</button>
 </div>
 
 <div id="calendar"></div>
-<div id="summary" class="summary"></div>
+<div id="summary"></div>
+
+<div class="bottom-bar">
+  <button onclick="prevMonth()">←</button>
+  <button onclick="generate()">再生成</button>
+  <button onclick="nextMonth()">→</button>
+</div>
 
 <script>
 let shifts = [];
 let lastDate;
+let startX = 0;
 
-const patterns = ["休", "昼", "夜", "松", "夜松"];
+const patterns = ["休","昼","夜","松","夜松"];
 
 function generate() {
   const y = +year.value;
@@ -118,13 +129,11 @@ function generate() {
   }
 
   render(y, m);
-  saveData();
 }
 
 function render(y, m) {
   let html = "<table><tr>";
-  const days = ["日","月","火","水","木","金","土"];
-  days.forEach(d => html += "<th>"+d+"</th>");
+  ["日","月","火","水","木","金","土"].forEach(d => html += "<th>"+d+"</th>");
   html += "</tr><tr>";
 
   let firstDay = new Date(y, m, 1).getDay();
@@ -159,43 +168,46 @@ function change(i) {
   let idx = patterns.indexOf(shifts[i]);
   shifts[i] = patterns[(idx + 1) % patterns.length];
   render(+year.value, +month.value - 1);
-  saveData();
 }
 
 function updateSummary() {
-  let count = {昼:0, 夜:0, 松:0, 休:0};
+  let c = {昼:0,夜:0,松:0,休:0};
 
-  shifts.forEach(s => {
-    if (s === "夜松") {
-      count["夜"]++;
-      count["松"]++;
-    } else {
-      count[s]++;
-    }
+  shifts.forEach(s=>{
+    if(s==="夜松"){c["夜"]++;c["松"]++;}
+    else c[s]++;
   });
 
-  summary.innerHTML =
-    `昼:${count["昼"]} 夜:${count["夜"]} 松屋:${count["松"]} 休:${count["休"]}`;
+  summary.innerHTML = `昼:${c["昼"]} 夜:${c["夜"]} 松:${c["松"]} 休:${c["休"]}`;
 }
 
-function getKey() {
-  return `shift_${year.value}_${month.value}`;
+/* 月変更 */
+function prevMonth(){
+  month.value--;
+  if(month.value < 1){ month.value=12; year.value--; }
+  generate();
 }
 
-function saveData() {
-  localStorage.setItem(getKey(), JSON.stringify(shifts));
+function nextMonth(){
+  month.value++;
+  if(month.value > 12){ month.value=1; year.value++; }
+  generate();
 }
 
-function loadData() {
-  const data = localStorage.getItem(getKey());
-  if (data) {
-    shifts = JSON.parse(data);
-    lastDate = shifts.length;
-    render(+year.value, +month.value - 1);
-  }
-}
+/* スワイプ */
+document.addEventListener("touchstart", e=>{
+  startX = e.touches[0].clientX;
+});
+
+document.addEventListener("touchend", e=>{
+  let diff = e.changedTouches[0].clientX - startX;
+  if(diff > 50) prevMonth();
+  if(diff < -50) nextMonth();
+});
+
+/* 初回 */
+generate();
 </script>
 
 </body>
-</html>
 </html>
