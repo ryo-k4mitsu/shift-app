@@ -3,14 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>シフト管理 完全版</title>
+<title>シフト管理 完成版</title>
 
 <style>
-body { margin:0; font-family:-apple-system; background:#f5f5f5; }
+body {
+  margin:0;
+  font-family:-apple-system;
+  background:#f5f5f5;
+  padding-bottom:90px; /* ←スクロール改善 */
+}
 
-.header { text-align:center; padding:10px; font-size:18px; font-weight:bold; }
+.header {
+  text-align:center;
+  padding:10px;
+  font-size:18px;
+  font-weight:bold;
+}
 
-/* 入力欄（スマホ1列） */
+/* 入力 */
 .controls {
   display:flex;
   flex-direction:column;
@@ -21,7 +31,6 @@ body { margin:0; font-family:-apple-system; background:#f5f5f5; }
 .controls input, .controls button {
   width:100%;
   padding:6px;
-  box-sizing:border-box;
 }
 
 /* カレンダー */
@@ -30,19 +39,28 @@ td,th { border:1px solid #ddd; text-align:center; font-size:12px; }
 
 td {
   height:72px;
-  vertical-align:top;
+  padding:0;
 }
 
-/* サイズ固定（ここ重要） */
-td div {
-  height:24px;
-  line-height:24px;
+.cell {
+  display:flex;
+  flex-direction:column;
+  height:100%;
+}
+
+.date {
   font-size:11px;
+  padding:2px;
+}
+
+.shift {
+  flex:1;
   display:flex;
   align-items:center;
   justify-content:center;
-  white-space:nowrap;
+  font-size:11px;
   font-weight:bold;
+  white-space:nowrap;
 }
 
 /* 色 */
@@ -52,18 +70,42 @@ td div {
 .matsuya{background:#ffb3b3;}
 .double{background:linear-gradient(135deg,#d2b6ff 50%,#ffb3b3 50%);}
 
-/* 下固定メニュー */
+/* 給料 */
+#salary {
+  margin:10px;
+  padding:12px;
+  background:white;
+  border-radius:12px;
+  text-align:center;
+  box-shadow:0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* 集計 */
+#summary {
+  margin:10px;
+  text-align:center;
+}
+
+/* 下メニュー */
 .bottom-bar {
- position:fixed; bottom:0; width:100%;
- background:white; display:flex; justify-content:space-around;
- padding:10px 0; border-top:1px solid #ccc;
+ position:fixed;
+ bottom:0;
+ width:100%;
+ background:white;
+ display:flex;
+ justify-content:space-around;
+ padding:10px 0;
+ border-top:1px solid #ccc;
 }
 
 /* モーダル */
 .modal {
- position:fixed; top:50%; left:50%;
+ position:fixed;
+ top:50%;
+ left:50%;
  transform:translate(-50%,-50%);
- background:white; padding:20px;
+ background:white;
+ padding:20px;
  border-radius:10px;
  display:none;
 }
@@ -113,23 +155,19 @@ let pressTimer, editMode=false;
 
 const patterns=["昼","夜","松","夜松","休"];
 
-// 保存キー
+// 保存
 function getKey(){
  return `shift_${year.value}_${month.value}`;
 }
 
-// 保存
 function saveData(){
- localStorage.setItem(getKey(), JSON.stringify({
-  shifts, hoursData
- }));
+ localStorage.setItem(getKey(), JSON.stringify({shifts, hoursData}));
 }
 
-// 読込
 function loadData(){
- const data=localStorage.getItem(getKey());
- if(data){
-  const p=JSON.parse(data);
+ const d=localStorage.getItem(getKey());
+ if(d){
+  const p=JSON.parse(d);
   shifts=p.shifts;
   hoursData=p.hoursData;
   lastDate=shifts.length;
@@ -139,13 +177,13 @@ function loadData(){
  return false;
 }
 
-// モード切替
+// モード
 function toggleEdit(){
  editMode=!editMode;
  modeBtn.innerText=editMode?"編集モード":"閲覧モード";
 }
 
-// 生成（回数完全一致＋休みロジック）
+// 生成
 function generate(force=false){
  if(!force && loadData()) return;
 
@@ -163,7 +201,7 @@ function generate(force=false){
 
  let count={昼:0,夜:0,松:0};
 
- // 日曜＋隔週水曜休み
+ // 休み（日曜＋隔週水曜）
  let w=0;
  for(let d=1;d<=lastDate;d++){
   let dow=new Date(y,m,d).getDay();
@@ -178,8 +216,7 @@ function generate(force=false){
  for(let d=1;d<=lastDate;d++){
   let i=d-1;
   let dow=new Date(y,m,d).getDay();
-
-  if(shifts[i]==="" && (dow===1||dow===6)
+  if(shifts[i]===""&&(dow===1||dow===6)
     && count["夜"]<target["夜"]
     && count["松"]<target["松"]){
     shifts[i]="夜松";
@@ -192,15 +229,14 @@ function generate(force=false){
  for(let d=1;d<=lastDate;d++){
   let i=d-1;
   let dow=new Date(y,m,d).getDay();
-
-  if(shifts[i]==="" && (dow===2||dow===4)
+  if(shifts[i]===""&&(dow===2||dow===4)
     && count["昼"]<target["昼"]){
     shifts[i]="昼";
     count["昼"]++;
   }
  }
 
- // 残り完全一致
+ // 残り
  for(let i=0;i<lastDate;i++){
   if(shifts[i]!=="") continue;
 
@@ -229,7 +265,6 @@ function render(y,m){
  html+="</tr><tr>";
 
  let first=new Date(y,m,1).getDay(),c=0;
-
  for(let i=0;i<first;i++){html+="<td></td>";c++;}
 
  for(let d=1;d<=lastDate;d++){
@@ -240,7 +275,10 @@ function render(y,m){
     ontouchstart="startPress(${d-1})"
     ontouchend="endPress(${d-1})"
   >
-    ${d}<br>${view(shifts[d-1])}
+    <div class="cell">
+      <div class="date">${d}</div>
+      ${view(shifts[d-1])}
+    </div>
   </td>`;
   c++; if(c%7===0)html+="</tr><tr>";
  }
@@ -273,11 +311,11 @@ function changeShift(i){
 
 // 表示
 function view(s){
- if(s==="休")return `<div class="off">休</div>`;
- if(s==="昼")return `<div class="day">昼</div>`;
- if(s==="夜")return `<div class="night">夜</div>`;
- if(s==="松")return `<div class="matsuya">松</div>`;
- if(s==="夜松")return `<div class="double">夜松</div>`;
+ if(s==="休")return `<div class="shift off">休</div>`;
+ if(s==="昼")return `<div class="shift day">昼</div>`;
+ if(s==="夜")return `<div class="shift night">夜</div>`;
+ if(s==="松")return `<div class="shift matsuya">松</div>`;
+ if(s==="夜松")return `<div class="shift double">夜松</div>`;
 }
 
 // 時間変更
@@ -312,7 +350,13 @@ function calcSalary(){
   let h=hoursData[i]??defaultHours(s);
   total+=h*1100;
  });
- salary.innerHTML=`💰 ${Math.round(total).toLocaleString()}円`;
+
+ salary.innerHTML = `
+   <div style="font-size:14px;">💰 月収目安</div>
+   <div style="font-size:26px; margin-top:5px; font-weight:bold;">
+     ${Math.round(total).toLocaleString()} 円
+   </div>
+ `;
 }
 
 // 集計
@@ -322,7 +366,7 @@ function updateSummary(){
   if(s==="夜松"){c["夜"]++;c["松"]++;}
   else c[s]++;
  });
- summary.innerHTML=`昼:${c["昼"]} 夜:${c["夜"]} 松:${c["松"]} 休:${c["休"]}`;
+ summary.innerHTML=`昼:${c["昼"]} / 夜:${c["夜"]} / 松:${c["松"]} / 休:${c["休"]}`;
 }
 
 // 月移動
