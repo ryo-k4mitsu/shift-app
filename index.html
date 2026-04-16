@@ -83,61 +83,51 @@ const LIMITS={
 const patterns=["昼","夜","松","夜松","休"];
 
 function generate(){
- const y=+year.value,m=+month.value-1;
+ const y=+year.value, m=+month.value-1;
  lastDate=new Date(y,m+1,0).getDate();
 
  shifts=Array(lastDate).fill("");
  hoursData=Array(lastDate).fill(null);
 
+ // 入力回数（絶対一致させる）
+ let target={
+  昼:+dayCount.value,
+  夜:+nightCount.value,
+  松:+matsuCount.value
+ };
+
  let count={昼:0,夜:0,松:0};
 
- // ① 週ごとに最低1休み確保
- let weeks=[];
- let week=[];
-
+ // =====================
+ // ① 休み確保（日曜＋隔週水曜）
+ // =====================
+ let weekIndex=0;
  for(let d=1;d<=lastDate;d++){
-  week.push(d-1);
   let dow=new Date(y,m,d).getDay();
-  if(dow===6 || d===lastDate){ // 土曜 or 月末
-    weeks.push(week);
-    week=[];
+
+  if(dow===0){ // 日曜
+    shifts[d-1]="休";
+  }
+  else if(dow===3){ // 水曜
+    if(weekIndex%2===0){ // 隔週
+      shifts[d-1]="休";
+    }
+    weekIndex++;
   }
  }
 
- weeks.forEach(w=>{
-  // 日曜優先
-  let restDay = w.find(i=>{
-    return new Date(y,m,i+1).getDay()===0;
-  });
-
-  if(restDay===undefined){
-    // なければランダムで1日休み
-    restDay = w[Math.floor(Math.random()*w.length)];
-  }
-
-  shifts[restDay]="休";
- });
-
- // ② 火木→昼
+ // =====================
+ // ② 夜松配置（優先的に）
+ // =====================
  for(let d=1;d<=lastDate;d++){
   let i=d-1;
   let dow=new Date(y,m,d).getDay();
 
-  if(shifts[i]==="" && (dow===2||dow===4) && count["昼"]<LIMITS["昼"].max){
-    shifts[i]="昼";
-    count["昼"]++;
-  }
- }
+  if(shifts[i]!=="") continue;
 
- // ③ 月土→夜松
- for(let d=1;d<=lastDate;d++){
-  let i=d-1;
-  let dow=new Date(y,m,d).getDay();
-
-  if(shifts[i]==="" &&
-    (dow===1||dow===6) &&
-    count["夜"]<LIMITS["夜"].max &&
-    count["松"]<LIMITS["松"].max){
+  if((dow===1||dow===6)
+    && count["夜"]<target["夜"]
+    && count["松"]<target["松"]){
 
     shifts[i]="夜松";
     count["夜"]++;
@@ -145,27 +135,62 @@ function generate(){
   }
  }
 
- // ④ 残り埋め（下限優先）
+ // =====================
+ // ③ 昼（火木）
+ // =====================
+ for(let d=1;d<=lastDate;d++){
+  let i=d-1;
+  let dow=new Date(y,m,d).getDay();
+
+  if(shifts[i]==="" && (dow===2||dow===4) && count["昼"]<target["昼"]){
+    shifts[i]="昼";
+    count["昼"]++;
+  }
+ }
+
+ // =====================
+ // ④ 残りを完全一致で埋める
+ // =====================
  for(let i=0;i<lastDate;i++){
   if(shifts[i]!=="") continue;
 
-  if(count["昼"]<LIMITS["昼"].min){
+  if(count["昼"]<target["昼"]){
     shifts[i]="昼"; count["昼"]++;
   }
-  else if(count["夜"]<LIMITS["夜"].min){
+  else if(count["夜"]<target["夜"]){
     shifts[i]="夜"; count["夜"]++;
   }
-  else if(count["松"]<LIMITS["松"].min){
+  else if(count["松"]<target["松"]){
     shifts[i]="松"; count["松"]++;
   }
   else{
-    // 無理に入れない → 休み
     shifts[i]="休";
+  }
+ }
+
+ // =====================
+ // ⑤ 最終チェック（ズレ防止）
+ // =====================
+ let diffDay = target["昼"] - count["昼"];
+ let diffNight = target["夜"] - count["夜"];
+ let diffMatsu = target["松"] - count["松"];
+
+ // 不足分を強制補正
+ for(let i=0;i<lastDate;i++){
+  if(diffDay>0 && shifts[i]!=="休"){
+    shifts[i]="昼"; diffDay--; count["昼"]++;
+  }
+  if(diffNight>0 && shifts[i]!=="休"){
+    shifts[i]="夜"; diffNight--; count["夜"]++;
+  }
+  if(diffMatsu>0 && shifts[i]!=="休"){
+    shifts[i]="松"; diffMatsu--; count["松"]++;
   }
  }
 
  render(y,m);
 }
+ 
 function render(y,m){
  let html="<table><tr>";
  ["日","月","火","水","木","金","土"].forEach(d=>html+="<th>"+d+"</th>");
