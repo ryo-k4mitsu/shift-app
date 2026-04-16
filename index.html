@@ -1,81 +1,243 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>シフト管理 完全版</title>
+
+<style>
+body { margin:0; font-family:-apple-system; background:#f5f5f5; }
+.header { text-align:center; padding:10px; font-size:18px; font-weight:bold; }
+
+.controls { display:flex; flex-wrap:wrap; gap:5px; padding:8px; }
+.controls input { flex:1; min-width:0; padding:6px; }
+
+table { width:100%; border-collapse:collapse; background:white; }
+td,th { border:1px solid #ddd; text-align:center; font-size:12px; }
+td { height:70px; }
+
+.off{background:#b6fcb6;}
+.day{background:#aee3ff;}
+.night{background:#d2b6ff;}
+.matsuya{background:#ffb3b3;}
+.double{background:linear-gradient(135deg,#d2b6ff 50%,#ffb3b3 50%);}
+
+.bottom-bar {
+ position:fixed; bottom:0; width:100%;
+ background:white; display:flex; justify-content:space-around;
+ padding:10px 0; border-top:1px solid #ccc;
+}
+
+.modal {
+ position:fixed; top:50%; left:50%;
+ transform:translate(-50%,-50%);
+ background:white; padding:20px;
+ border-radius:10px;
+ display:none;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">シフト管理</div>
+
+<div class="controls">
+  <input type="number" id="year" value="2026">
+  <input type="number" id="month" value="4">
+</div>
+
+<div class="controls">
+  昼<input type="number" id="dayCount" value="6">
+  夜<input type="number" id="nightCount" value="11">
+  松<input type="number" id="matsuCount" value="14">
+</div>
+
+<div id="calendar"></div>
+<div id="summary"></div>
+<div id="salary"></div>
+
+<div class="bottom-bar">
+  <button onclick="prevMonth()">←</button>
+  <button onclick="generate()">再生成</button>
+  <button onclick="nextMonth()">→</button>
+</div>
+
+<div id="modal" class="modal">
+  <div id="modalDate"></div>
+  <input type="number" id="hours" step="0.5">時間<br><br>
+  <button onclick="saveHours()">保存</button>
+  <button onclick="closeModal()">閉じる</button>
+</div>
+
 <script>
-const LIMITS = {
+let shifts=[], hoursData=[], lastDate, selectedIndex;
+let pressTimer;
+
+const LIMITS={
  昼:{min:5,max:8},
  夜:{min:10,max:12},
  松:{min:12,max:16}
 };
 
+const patterns=["昼","夜","松","夜松","休"];
+
 function generate(){
- const y=+year.value, m=+month.value-1;
+ const y=+year.value,m=+month.value-1;
  lastDate=new Date(y,m+1,0).getDate();
 
  shifts=Array(lastDate).fill("休");
  hoursData=Array(lastDate).fill(null);
 
+ let target={
+  昼:+dayCount.value,
+  夜:+nightCount.value,
+  松:+matsuCount.value
+ };
+
  let count={昼:0,夜:0,松:0};
 
- // ① 日曜は休み固定
+ // 日曜休み
  for(let d=1;d<=lastDate;d++){
-  let dow=new Date(y,m,d).getDay();
-  if(dow===0) shifts[d-1]="休";
+  if(new Date(y,m,d).getDay()===0) shifts[d-1]="休";
  }
 
- // ② 昼（火木）
+ // 火木→昼
  for(let d=1;d<=lastDate;d++){
   let dow=new Date(y,m,d).getDay();
-  if((dow===2||dow===4) && count["昼"]<LIMITS["昼"].max){
-    shifts[d-1]="昼";
-    count["昼"]++;
+  if((dow===2||dow===4) && count["昼"]<target["昼"] && count["昼"]<LIMITS["昼"].max){
+    shifts[d-1]="昼"; count["昼"]++;
   }
  }
 
- // ③ 夜松（月土）※ここが重要
+ // 月土→夜松
  for(let d=1;d<=lastDate;d++){
   let dow=new Date(y,m,d).getDay();
   if((dow===1||dow===6)
-    && count["夜"]<LIMITS["夜"].max
-    && count["松"]<LIMITS["松"].max){
-      shifts[d-1]="夜松";
-      count["夜"]++;
-      count["松"]++;
+   && count["夜"]<target["夜"]
+   && count["松"]<target["松"]
+   && count["夜"]<LIMITS["夜"].max
+   && count["松"]<LIMITS["松"].max){
+    shifts[d-1]="夜松";
+    count["夜"]++; count["松"]++;
   }
  }
 
- // ④ 残りを必要分だけ埋める
+ // 残り調整
  for(let i=0;i<lastDate;i++){
   if(shifts[i]!=="休") continue;
 
-  if(count["昼"]<LIMITS["昼"].min){
+  if(count["昼"]<target["昼"] && count["昼"]<LIMITS["昼"].max){
     shifts[i]="昼"; count["昼"]++;
   }
-  else if(count["夜"]<LIMITS["夜"].min){
+  else if(count["夜"]<target["夜"] && count["夜"]<LIMITS["夜"].max){
     shifts[i]="夜"; count["夜"]++;
   }
-  else if(count["松"]<LIMITS["松"].min){
+  else if(count["松"]<target["松"] && count["松"]<LIMITS["松"].max){
     shifts[i]="松"; count["松"]++;
-  }
- }
-
- // ⑤ 上限チェック（最終ガード）
- for(let i=0;i<lastDate;i++){
-  if(shifts[i]==="昼" && count["昼"]>LIMITS["昼"].max){
-    shifts[i]="休"; count["昼"]--;
-  }
-  if(shifts[i]==="夜" && count["夜"]>LIMITS["夜"].max){
-    shifts[i]="休"; count["夜"]--;
-  }
-  if(shifts[i]==="松" && count["松"]>LIMITS["松"].max){
-    shifts[i]="休"; count["松"]--;
-  }
-  if(shifts[i]==="夜松"){
-    if(count["夜"]>LIMITS["夜"].max || count["松"]>LIMITS["松"].max){
-      shifts[i]="休";
-      count["夜"]--;
-      count["松"]--;
-    }
   }
  }
 
  render(y,m);
 }
+
+function render(y,m){
+ let html="<table><tr>";
+ ["日","月","火","水","木","金","土"].forEach(d=>html+="<th>"+d+"</th>");
+ html+="</tr><tr>";
+
+ let first=new Date(y,m,1).getDay(),c=0;
+
+ for(let i=0;i<first;i++){html+="<td></td>";c++;}
+
+ for(let d=1;d<=lastDate;d++){
+  html+=`
+  <td 
+    onmousedown="startPress(${d-1})"
+    onmouseup="endPress(${d-1})"
+    ontouchstart="startPress(${d-1})"
+    ontouchend="endPress(${d-1})"
+  >
+    ${d}<br>${view(shifts[d-1])}
+  </td>`;
+  c++; if(c%7===0)html+="</tr><tr>";
+ }
+
+ html+="</tr></table>";
+ calendar.innerHTML=html;
+
+ updateSummary();
+ calcSalary();
+}
+
+function startPress(i){
+ pressTimer=setTimeout(()=>openModal(i),500);
+}
+function endPress(i){
+ clearTimeout(pressTimer);
+ changeShift(i);
+}
+
+function changeShift(i){
+ let idx=patterns.indexOf(shifts[i]);
+ shifts[i]=patterns[(idx+1)%patterns.length];
+ render(+year.value,+month.value-1);
+}
+
+function view(s){
+ if(s==="休")return `<div class="off">休</div>`;
+ if(s==="昼")return `<div class="day">昼</div>`;
+ if(s==="夜")return `<div class="night">夜</div>`;
+ if(s==="松")return `<div class="matsuya">松</div>`;
+ if(s==="夜松")return `<div class="double">夜松</div>`;
+}
+
+function openModal(i){
+ selectedIndex=i;
+ modal.style.display="block";
+ hours.value = hoursData[i] ?? defaultHours(shifts[i]);
+ modalDate.innerText=`${i+1}日`;
+}
+
+function defaultHours(s){
+ if(s==="昼")return 5;
+ if(s==="夜")return 3.5;
+ if(s==="松")return 5;
+ if(s==="夜松")return 8.5;
+ return 0;
+}
+
+function saveHours(){
+ hoursData[selectedIndex]=+hours.value;
+ closeModal();
+ calcSalary();
+}
+
+function closeModal(){ modal.style.display="none"; }
+
+function calcSalary(){
+ let total=0;
+ shifts.forEach((s,i)=>{
+  let h=hoursData[i]??defaultHours(s);
+  total+=h*1100;
+ });
+ salary.innerHTML=`💰 ${Math.round(total).toLocaleString()}円`;
+}
+
+function updateSummary(){
+ let c={昼:0,夜:0,松:0,休:0};
+ shifts.forEach(s=>{
+  if(s==="夜松"){c["夜"]++;c["松"]++;}
+  else c[s]++;
+ });
+ summary.innerHTML=`昼:${c["昼"]} 夜:${c["夜"]} 松:${c["松"]} 休:${c["休"]}`;
+}
+
+function prevMonth(){month.value--;if(month.value<1){month.value=12;year.value--;}generate();}
+function nextMonth(){month.value++;if(month.value>12){month.value=1;year.value++;}generate();}
+
+generate();
 </script>
+
+</body>
+</html>
