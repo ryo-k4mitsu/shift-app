@@ -2,87 +2,41 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-<title>シフト管理</title>
+<title>シフト管理 完全版</title>
 
 <style>
-body {
-  margin: 0;
-  font-family: -apple-system;
-  background: #f5f5f5;
-}
+body { margin:0; font-family:-apple-system; background:#f5f5f5; }
 
-/* ヘッダー */
-.header {
-  text-align: center;
-  padding: 10px;
-  font-size: 18px;
-  font-weight: bold;
-}
+.header { text-align:center; padding:10px; font-size:18px; font-weight:bold; }
 
-/* 入力エリア */
-.controls {
-  display: flex;
-  gap: 6px;
-  padding: 8px;
-}
+.controls { display:flex; gap:5px; padding:8px; }
+.controls input { flex:1; min-width:0; padding:6px; }
 
-.controls input {
-  flex: 1;
-  min-width: 0; /* ←これ重要（はみ出し防止） */
-  padding: 6px;
-  font-size: 14px;
-}
+table { width:100%; border-collapse:collapse; background:white; }
+td,th { border:1px solid #ddd; text-align:center; font-size:12px; }
+td { height:70px; }
 
-/* カレンダー */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: white;
-}
+.off{background:#b6fcb6;}
+.day{background:#aee3ff;}
+.night{background:#d2b6ff;}
+.matsuya{background:#ffb3b3;}
+.double{background:linear-gradient(135deg,#d2b6ff 50%,#ffb3b3 50%);}
 
-td, th {
-  border: 1px solid #ddd;
-  text-align: center;
-  font-size: 12px;
-}
-
-td {
-  height: 65px;
-}
-
-/* 色 */
-.off { background: #b6fcb6; font-weight: bold; }
-.day { background: #aee3ff; }
-.night { background: #d2b6ff; }
-.matsuya { background: #ffb3b3; }
-
-.double {
-  background: linear-gradient(135deg, #d2b6ff 50%, #ffb3b3 50%);
-}
-
-/* 下メニュー */
 .bottom-bar {
-  position: fixed;
-  bottom: 0;
-  width: 100%;
-  background: white;
-  display: flex;
-  justify-content: space-around;
-  padding: 10px 0;
-  border-top: 1px solid #ccc;
+ position:fixed; bottom:0; width:100%;
+ background:white; display:flex; justify-content:space-around;
+ padding:10px 0; border-top:1px solid #ccc;
 }
 
-.bottom-bar button {
-  font-size: 18px;
-  padding: 5px 15px;
-}
-
-/* セーフエリア */
-body {
-  padding-bottom: env(safe-area-inset-bottom);
+.modal {
+ position:fixed; top:50%; left:50%;
+ transform:translate(-50%,-50%);
+ background:white; padding:20px;
+ border-radius:10px;
+ box-shadow:0 0 10px rgba(0,0,0,0.3);
+ display:none;
 }
 </style>
 </head>
@@ -98,6 +52,7 @@ body {
 
 <div id="calendar"></div>
 <div id="summary"></div>
+<div id="salary"></div>
 
 <div class="bottom-bar">
   <button onclick="prevMonth()">←</button>
@@ -105,97 +60,125 @@ body {
   <button onclick="nextMonth()">→</button>
 </div>
 
+<!-- モーダル -->
+<div id="modal" class="modal">
+  <div id="modalDate"></div>
+  <input type="number" id="hours" step="0.5"> 時間<br><br>
+  <button onclick="saveHours()">保存</button>
+  <button onclick="closeModal()">閉じる</button>
+</div>
+
 <script>
-let shifts = [];
-let lastDate;
+let shifts=[], hoursData=[], lastDate, selectedIndex=null;
 
-const patterns = ["休","昼","夜","松","夜松"];
+const DEFAULT = {
+ 昼:5,
+ 夜:3.5,
+ 松:5
+};
 
-function generate() {
-  const y = +year.value;
-  const m = +month.value - 1;
+function generate(){
+ const y=+year.value, m=+month.value-1;
+ lastDate=new Date(y,m+1,0).getDate();
 
-  lastDate = new Date(y, m + 1, 0).getDate();
-  shifts = Array(lastDate).fill("");
+ shifts=Array(lastDate).fill("");
+ hoursData=Array(lastDate).fill(null);
 
-  for (let d = 1; d <= lastDate; d++) {
-    let dow = new Date(y, m, d).getDay();
+ let count={昼:0,夜:0,松:0};
 
-    if (dow === 0) shifts[d-1] = "休";
-    else if (dow === 1 || dow === 6) shifts[d-1] = "夜松";
-    else if (dow === 2 || dow === 4) shifts[d-1] = "昼";
-    else shifts[d-1] = "夜";
-  }
+ for(let d=1;d<=lastDate;d++){
+  let dow=new Date(y,m,d).getDay();
+  if(dow===0){shifts[d-1]="休";}
+  else if(dow===1||dow===6){shifts[d-1]="夜松";count["夜"]++;count["松"]++;}
+  else if(dow===2||dow===4){shifts[d-1]="昼";count["昼"]++;}
+ }
 
-  render(y, m);
+ for(let i=0;i<lastDate;i++){
+  if(shifts[i]==="") shifts[i]="夜";
+ }
+
+ render(y,m);
 }
 
-function render(y, m) {
-  let html = "<table><tr>";
-  ["日","月","火","水","木","金","土"].forEach(d => html += "<th>"+d+"</th>");
-  html += "</tr><tr>";
+function render(y,m){
+ let html="<table><tr>";
+ ["日","月","火","水","木","金","土"].forEach(d=>html+="<th>"+d+"</th>");
+ html+="</tr><tr>";
 
-  let firstDay = new Date(y, m, 1).getDay();
-  let count = 0;
+ let first=new Date(y,m,1).getDay(),c=0;
 
-  for (let i = 0; i < firstDay; i++) {
-    html += "<td></td>";
-    count++;
-  }
+ for(let i=0;i<first;i++){html+="<td></td>";c++;}
 
-  for (let d = 1; d <= lastDate; d++) {
-    html += `<td onclick="change(${d-1})">${d}<br>${display(shifts[d-1])}</td>`;
-    count++;
-    if (count % 7 === 0) html += "</tr><tr>";
-  }
+ for(let d=1;d<=lastDate;d++){
+  html+=`<td onclick="openModal(${d-1})">${d}<br>${view(shifts[d-1])}</td>`;
+  c++; if(c%7===0)html+="</tr><tr>";
+ }
 
-  html += "</tr></table>";
-  calendar.innerHTML = html;
+ html+="</tr></table>";
+ calendar.innerHTML=html;
 
-  updateSummary();
+ updateSummary();
+ calcSalary();
 }
 
-function display(s) {
-  if (s === "休") return `<div class="off">休</div>`;
-  if (s === "昼") return `<div class="day">昼</div>`;
-  if (s === "夜") return `<div class="night">夜</div>`;
-  if (s === "松") return `<div class="matsuya">松</div>`;
-  if (s === "夜松") return `<div class="double">夜松</div>`;
+function view(s){
+ if(s==="休")return `<div class="off">休</div>`;
+ if(s==="昼")return `<div class="day">昼</div>`;
+ if(s==="夜")return `<div class="night">夜</div>`;
+ if(s==="松")return `<div class="matsuya">松</div>`;
+ if(s==="夜松")return `<div class="double">夜松</div>`;
 }
 
-function change(i) {
-  let idx = patterns.indexOf(shifts[i]);
-  shifts[i] = patterns[(idx + 1) % patterns.length];
-  render(+year.value, +month.value - 1);
+function openModal(i){
+ selectedIndex=i;
+ modal.style.display="block";
+ modalDate.innerText=`${i+1}日`;
+ hours.value = hoursData[i] ?? getDefaultHours(shifts[i]);
 }
 
-function updateSummary() {
-  let c = {昼:0,夜:0,松:0,休:0};
-
-  shifts.forEach(s=>{
-    if(s==="夜松"){c["夜"]++;c["松"]++;}
-    else c[s]++;
-  });
-
-  summary.innerHTML = `昼:${c["昼"]} 夜:${c["夜"]} 松:${c["松"]} 休:${c["休"]}`;
+function getDefaultHours(s){
+ if(s==="昼")return 5;
+ if(s==="夜")return 3.5;
+ if(s==="松")return 5;
+ if(s==="夜松")return 8.5;
+ return 0;
 }
 
-function prevMonth(){
-  month.value--;
-  if(month.value < 1){ month.value=12; year.value--; }
-  generate();
+function saveHours(){
+ hoursData[selectedIndex]=+hours.value;
+ closeModal();
+ calcSalary();
 }
 
-function nextMonth(){
-  month.value++;
-  if(month.value > 12){ month.value=1; year.value++; }
-  generate();
+function closeModal(){
+ modal.style.display="none";
 }
 
-/* 初回 */
+function calcSalary(){
+ let total=0;
+
+ shifts.forEach((s,i)=>{
+  let h = hoursData[i] ?? getDefaultHours(s);
+  total += h * 1100;
+ });
+
+ salary.innerHTML=`💰 月収目安：${Math.round(total).toLocaleString()}円`;
+}
+
+function updateSummary(){
+ let c={昼:0,夜:0,松:0,休:0};
+ shifts.forEach(s=>{
+  if(s==="夜松"){c["夜"]++;c["松"]++;}
+  else c[s]++;
+ });
+ summary.innerHTML=`昼:${c["昼"]} 夜:${c["夜"]} 松:${c["松"]} 休:${c["休"]}`;
+}
+
+function prevMonth(){month.value--;if(month.value<1){month.value=12;year.value--;}generate();}
+function nextMonth(){month.value++;if(month.value>12){month.value=1;year.value++;}generate();}
+
 generate();
 </script>
 
 </body>
-</html>
 </html>
