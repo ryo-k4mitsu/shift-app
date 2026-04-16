@@ -48,9 +48,9 @@ td { height:70px; }
 </div>
 
 <div class="controls">
-  昼回数<input type="number" id="dayCount" value="6">
-  夜回数<input type="number" id="nightCount" value="11">
-  松回数<input type="number" id="matsuCount" value="14">
+  昼<input type="number" id="dayCount" value="6">
+  夜<input type="number" id="nightCount" value="11">
+  松<input type="number" id="matsuCount" value="14">
 </div>
 
 <div id="calendar"></div>
@@ -72,65 +72,22 @@ td { height:70px; }
 
 <script>
 let shifts=[], hoursData=[], lastDate, selectedIndex;
+let pressTimer;
 
-const LIMITS = {
- 昼:{min:5,max:8},
- 夜:{min:10,max:12},
- 松:{min:12,max:16}
-};
+const patterns=["昼","夜","松","夜松","休"];
 
 function generate(){
- const y=+year.value, m=+month.value-1;
+ const y=+year.value,m=+month.value-1;
  lastDate=new Date(y,m+1,0).getDate();
 
- shifts=Array(lastDate).fill("");
+ shifts=Array(lastDate).fill("夜");
  hoursData=Array(lastDate).fill(null);
 
- let target={
-  昼:+dayCount.value,
-  夜:+nightCount.value,
-  松:+matsuCount.value
- };
-
- let count={昼:0,夜:0,松:0};
-
- // ① 基本配置
  for(let d=1;d<=lastDate;d++){
   let dow=new Date(y,m,d).getDay();
-  if(dow===0){shifts[d-1]="休";}
-  else if((dow===1||dow===6)&&count["夜"]<target["夜"]&&count["松"]<target["松"]){
-    shifts[d-1]="夜松"; count["夜"]++; count["松"]++;
-  }
-  else if((dow===2||dow===4)&&count["昼"]<target["昼"]){
-    shifts[d-1]="昼"; count["昼"]++;
-  }
- }
-
- // ② 残り埋め（目標優先）
- for(let i=0;i<lastDate;i++){
-  if(shifts[i]===""){
-    if(count["昼"]<target["昼"]){shifts[i]="昼";count["昼"]++;}
-    else if(count["夜"]<target["夜"]){shifts[i]="夜";count["夜"]++;}
-    else if(count["松"]<target["松"]){shifts[i]="松";count["松"]++;}
-    else shifts[i]="夜";
-  }
- }
-
- // ③ 上限補正
- for(let i=0;i<lastDate;i++){
-  if(shifts[i]==="昼" && count["昼"]>LIMITS["昼"].max){
-    shifts[i]="夜"; count["昼"]--; count["夜"]++;
-  }
-  if(shifts[i]==="夜" && count["夜"]>LIMITS["夜"].max){
-    shifts[i]="松"; count["夜"]--; count["松"]++;
-  }
- }
-
- // ④ 下限補正
- for(let i=0;i<lastDate;i++){
-  if(count["昼"]<LIMITS["昼"].min && shifts[i]!=="休"){
-    shifts[i]="昼"; count["昼"]++;
-  }
+  if(dow===0) shifts[d-1]="休";
+  if(dow===2||dow===4) shifts[d-1]="昼";
+  if(dow===1||dow===6) shifts[d-1]="夜松";
  }
 
  render(y,m);
@@ -146,7 +103,15 @@ function render(y,m){
  for(let i=0;i<first;i++){html+="<td></td>";c++;}
 
  for(let d=1;d<=lastDate;d++){
-  html+=`<td onclick="openModal(${d-1})">${d}<br>${view(shifts[d-1])}</td>`;
+  html+=`
+  <td 
+    onmousedown="startPress(${d-1})"
+    onmouseup="endPress(${d-1})"
+    ontouchstart="startPress(${d-1})"
+    ontouchend="endPress(${d-1})"
+  >
+    ${d}<br>${view(shifts[d-1])}
+  </td>`;
   c++; if(c%7===0)html+="</tr><tr>";
  }
 
@@ -155,6 +120,21 @@ function render(y,m){
 
  updateSummary();
  calcSalary();
+}
+
+function startPress(i){
+ pressTimer=setTimeout(()=>openModal(i),500);
+}
+
+function endPress(i){
+ clearTimeout(pressTimer);
+ changeShift(i);
+}
+
+function changeShift(i){
+ let idx=patterns.indexOf(shifts[i]);
+ shifts[i]=patterns[(idx+1)%patterns.length];
+ render(+year.value,+month.value-1);
 }
 
 function view(s){
