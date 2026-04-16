@@ -10,11 +10,19 @@ body { margin:0; font-family:-apple-system; background:#f5f5f5; }
 .header { text-align:center; padding:10px; font-size:18px; font-weight:bold; }
 
 .controls { display:flex; flex-wrap:wrap; gap:5px; padding:8px; }
-.controls input { flex:1; min-width:0; padding:6px; }
+.controls input, .controls button { flex:1; padding:6px; }
 
 table { width:100%; border-collapse:collapse; background:white; }
 td,th { border:1px solid #ddd; text-align:center; font-size:12px; }
 td { height:70px; }
+
+td div {
+  height:22px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:bold;
+}
 
 .off{background:#b6fcb6;}
 .day{background:#aee3ff;}
@@ -53,13 +61,17 @@ td { height:70px; }
   松<input type="number" id="matsuCount" value="14">
 </div>
 
+<div class="controls">
+  <button onclick="toggleEdit()" id="modeBtn">閲覧モード</button>
+</div>
+
 <div id="calendar"></div>
 <div id="summary"></div>
 <div id="salary"></div>
 
 <div class="bottom-bar">
   <button onclick="prevMonth()">←</button>
-  <button onclick="generate()">再生成</button>
+  <button onclick="generate(true)">再生成</button>
   <button onclick="nextMonth()">→</button>
 </div>
 
@@ -72,7 +84,7 @@ td { height:70px; }
 
 <script>
 let shifts=[], hoursData=[], lastDate, selectedIndex;
-let pressTimer;
+let pressTimer, editMode=false;
 
 const LIMITS={
  昼:{min:5,max:8},
@@ -82,14 +94,48 @@ const LIMITS={
 
 const patterns=["昼","夜","松","夜松","休"];
 
-function generate(){
- const y=+year.value, m=+month.value-1;
+// 保存キー
+function getKey(){
+ return `shift_${year.value}_${month.value}`;
+}
+
+// 保存
+function saveData(){
+ localStorage.setItem(getKey(), JSON.stringify({
+  shifts, hoursData
+ }));
+}
+
+// 読込
+function loadData(){
+ const data=localStorage.getItem(getKey());
+ if(data){
+  const p=JSON.parse(data);
+  shifts=p.shifts;
+  hoursData=p.hoursData;
+  lastDate=shifts.length;
+  render(+year.value,+month.value-1);
+  return true;
+ }
+ return false;
+}
+
+// モード切替
+function toggleEdit(){
+ editMode=!editMode;
+ modeBtn.innerText=editMode?"編集モード":"閲覧モード";
+}
+
+// 生成
+function generate(force=false){
+ if(!force && loadData()) return;
+
+ const y=+year.value,m=+month.value-1;
  lastDate=new Date(y,m+1,0).getDate();
 
  shifts=Array(lastDate).fill("");
  hoursData=Array(lastDate).fill(null);
 
- // 入力回数（絶対一致させる）
  let target={
   昼:+dayCount.value,
   夜:+nightCount.value,
@@ -98,59 +144,43 @@ function generate(){
 
  let count={昼:0,夜:0,松:0};
 
- // =====================
- // ① 休み確保（日曜＋隔週水曜）
- // =====================
- let weekIndex=0;
+ // 日曜＋隔週水曜休み
+ let wCount=0;
  for(let d=1;d<=lastDate;d++){
   let dow=new Date(y,m,d).getDay();
-
-  if(dow===0){ // 日曜
-    shifts[d-1]="休";
-  }
-  else if(dow===3){ // 水曜
-    if(weekIndex%2===0){ // 隔週
-      shifts[d-1]="休";
-    }
-    weekIndex++;
+  if(dow===0) shifts[d-1]="休";
+  else if(dow===3){
+    if(wCount%2===0) shifts[d-1]="休";
+    wCount++;
   }
  }
 
- // =====================
- // ② 夜松配置（優先的に）
- // =====================
+ // 夜松
  for(let d=1;d<=lastDate;d++){
   let i=d-1;
   let dow=new Date(y,m,d).getDay();
 
-  if(shifts[i]!=="") continue;
-
-  if((dow===1||dow===6)
-    && count["夜"]<target["夜"]
-    && count["松"]<target["松"]){
-
+  if(shifts[i]==="" && (dow===1||dow===6)
+   && count["夜"]<target["夜"]
+   && count["松"]<target["松"]){
     shifts[i]="夜松";
-    count["夜"]++;
-    count["松"]++;
+    count["夜"]++; count["松"]++;
   }
  }
 
- // =====================
- // ③ 昼（火木）
- // =====================
+ // 昼
  for(let d=1;d<=lastDate;d++){
   let i=d-1;
   let dow=new Date(y,m,d).getDay();
 
-  if(shifts[i]==="" && (dow===2||dow===4) && count["昼"]<target["昼"]){
+  if(shifts[i]==="" && (dow===2||dow===4)
+   && count["昼"]<target["昼"]){
     shifts[i]="昼";
     count["昼"]++;
   }
  }
 
- // =====================
- // ④ 残りを完全一致で埋める
- // =====================
+ // 残り
  for(let i=0;i<lastDate;i++){
   if(shifts[i]!=="") continue;
 
@@ -168,29 +198,11 @@ function generate(){
   }
  }
 
- // =====================
- // ⑤ 最終チェック（ズレ防止）
- // =====================
- let diffDay = target["昼"] - count["昼"];
- let diffNight = target["夜"] - count["夜"];
- let diffMatsu = target["松"] - count["松"];
-
- // 不足分を強制補正
- for(let i=0;i<lastDate;i++){
-  if(diffDay>0 && shifts[i]!=="休"){
-    shifts[i]="昼"; diffDay--; count["昼"]++;
-  }
-  if(diffNight>0 && shifts[i]!=="休"){
-    shifts[i]="夜"; diffNight--; count["夜"]++;
-  }
-  if(diffMatsu>0 && shifts[i]!=="休"){
-    shifts[i]="松"; diffMatsu--; count["松"]++;
-  }
- }
-
+ saveData();
  render(y,m);
 }
- 
+
+// 描画
 function render(y,m){
  let html="<table><tr>";
  ["日","月","火","水","木","金","土"].forEach(d=>html+="<th>"+d+"</th>");
@@ -221,16 +233,20 @@ function render(y,m){
 }
 
 function startPress(i){
+ if(!editMode) return;
  pressTimer=setTimeout(()=>openModal(i),500);
 }
+
 function endPress(i){
  clearTimeout(pressTimer);
+ if(!editMode) return;
  changeShift(i);
 }
 
 function changeShift(i){
  let idx=patterns.indexOf(shifts[i]);
  shifts[i]=patterns[(idx+1)%patterns.length];
+ saveData();
  render(+year.value,+month.value-1);
 }
 
@@ -259,6 +275,7 @@ function defaultHours(s){
 
 function saveHours(){
  hoursData[selectedIndex]=+hours.value;
+ saveData();
  closeModal();
  calcSalary();
 }
